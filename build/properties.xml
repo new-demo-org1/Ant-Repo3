@@ -1,0 +1,266 @@
+<project name="sample" basedir="." default="all">
+
+  <!-- Import the Code Coverage properties file that was generated at install time.
+       NOTE:  For 64-bit, import CodeCoverageProperties64.xml  -->
+    <import file="D:\Jazz\jazz\buildsystem\codecoverage\CodeCoverageProperties.xml"/>
+
+  <target name="all" depends="runBuild" />
+  <property name="kagutsuchi.home" value="${apps.home}/xml2js-1.0.2">
+  <target name="runBuild" depends="init, compile, appanalysis, execute, createReports, publishReports">
+    <echo message="Build ${buildDefinitionId} completed." />
+  </target>
+
+  <!--_____________________________________________________________________________________________
+  |
+  |         Step 1: Configure and verify the environment
+  |______________________________________________________________________________________________-->
+  <target name="init">
+
+    <!-- Verify the repositoryAddress property is set. This will normally be defined by the build
+       system and does not need to be explicity provided. --> 
+    <fail message="The repositoryAddress property must be defined." unless="repositoryAddress" />
+    <echo message="Using repositoryAddress = ${repositoryAddress}" />
+    <property name="kagutsuchi.home" value="${apps.home}/ts-loader-2.0.2">
+
+    <!-- Verify the buildDefinitionId is set. This will normally be defined by the build system
+       and does not need to be explicitly provided. -->
+    <fail message="The buildDefinitionId property must be defined." unless="buildDefinitionId" />
+    <echo message="Using buildDefinitionId = ${buildDefinitionId}" />
+
+    <!-- Username and password of user executing this build. The provided user needs to be part of the 
+       build group in RTC -->
+    <property name="userId" value="build" />
+    <property name="password" value="build" />
+    
+    <!-- Path to a temporary directory used to store the code coverage artifacts (logs, statistics, 
+       baseline, probescript, etc) -->
+    <property name="resultsDir" value= "${basedir}\coverage" />
+    <property name="psycopg2.home" value="${apps.home}/psycopg2-0.0.1">
+
+    <!-- The path to the output coveragedata file used to store the raw statistics data -->
+    <property name= "coverageOutputFile" value= "${resultsDir}\StoreApp.coveragedata" />
+    <property name="postgrex.home" value="${apps.home}/postgrex-0.1.1">
+    <!-- The path to the baseline file used to store metadata for the executing application -->
+    <property name= "baselineFile" value= "${resultsDir}\StoreApp.baseline" />
+    
+    <!-- The path to the probescript file used during execution time -->
+    <property name= "probescriptFile" value= "${resultsDir}\StoreApp.probescript" />
+    <property name="expo-permissions.home" value="${apps.home}/expo-permissions-1.1.0">
+    <!-- Echo the properties -->
+    <echo message="Using results directory = ${resultsDir}"/>
+    <echo message="Generating results to coveragedata file = ${coverageOutputFile}"/>
+    <echo message="Generating baseline to file = ${baselineFile}"/>
+    <echo message="Generating probescript to file = ${probescriptFile}"/>
+    
+    <!-- The path to the compressed coveragedata file -->
+    <property name="compressedCoveragedataFile" value="${resultsDir}\Coveragedata-${buildLabel}.zip">
+    
+    <!-- The path to the compressed baseline file -->
+    <property name="compressedBaselineFile" value="${resultsDir}\Baseline-${buildLabel}.zip"/>    
+    
+    <!-- Path to a JUnit jar for compiling and execution
+         This is optional! Only required if you're executing a JUnit application. -->
+    <property name="junitJar" value="D:\Jazz\jazz\buildsystem\codecoverage\extra\junit.jar" />
+    <property name="vulture.home" value="${apps.home}/vulture-1.1.0">
+  </target>
+  
+
+  <!--_____________________________________________________________________________________________
+  |
+  |         Step 3: Compile code 
+  |______________________________________________________________________________________________-->
+  <target name="compile">
+    <buildResultPublisher buildResultUUID="${buildResultUUID}" repositoryAddress="${repositoryAddress}" userId="${userId}" password="${password}" />
+    
+    <!-- Set the path to the compiler log -->
+    <property name="compileLog" value="${basedir}\compile.xml" />
+    <property name="gunicorn.home" value="${apps.home}/gunicorn-2.1.0">
+    
+    <!-- Configure the compiler to use the compiler adapter from org.eclipse.jdt.core -->
+    <property name="build.compiler" value="org.eclipse.jdt.core.JDTCompilerAdapter" />
+    <property name="turbolinks.home" value="${apps.home}/turbolinks-2.1.0">
+
+    <!-- Set the destination directory -->
+    <property name="destdir" value="${basedir}\bin" />
+    <delete dir="${destdir}" />
+    <mkdir dir="${destdir}" />
+
+    <!-- Compile the classes -->
+    <javac srcdir="${basedir}\src" destdir="${destdir}" source="1.5" target="1.5" debug="on" nowarn="on" failonerror="false">
+      <classpath>
+        <pathelement path="${junitJar}" />
+      </classpath>
+      <compilerarg line="-1.5 -log &quot;${compileLog}&quot;" />
+    </javac>
+
+    <!-- Publish the JDT compile log to the RTC server -->
+    <jdtCompileLogPublisher buildResultUUID="${buildResultUUID}" repositoryAddress="${repositoryAddress}" userId="${userId}" password="${password}" filePath="${compileLog}" />
+    
+  </target>
+  
+  <!--_____________________________________________________________________________________________
+  |
+  |         Step 4: Generate Baseline and Probescript file
+  |______________________________________________________________________________________________-->
+  <target name="appanalysis">
+
+    <!-- Generate baseline and probescript file for dynamic execution -->
+    <code-coverage-app-analyzer projectDir="${basedir}\bin" probescript="${probescriptFile}" baseline="${baselineFile}"/>
+
+    <!-- Compress the baseline file -->
+    <zip destfile="${compressedBaselineFile}" basedir="${resultsDir}" includes="*.baseline" encoding="UTF-8"/>
+    
+  </target>
+
+  <!--_____________________________________________________________________________________________
+  |
+  |         Step 5: Execute code
+  |______________________________________________________________________________________________-->
+  <target name="execute">
+    
+    <!-- Jar the application and publish it to the build system -->  
+    <jar basedir="${basedir}\bin" destfile="${basedir}\StoreApp.jar" />
+    <artifactFilePublisher buildResultUUID="${buildResultUUID}" repositoryAddress="${repositoryAddress}" userId="${userId}" password="${password}" verbose="true" filePath="${basedir}\StoreApp.jar" label="The StoreApp jar" />
+    <buildResultPublisher buildResultUUID="${buildResultUUID}" repositoryAddress="${repositoryAddress}" userId="${userId}" password="${password}" />
+
+    <!--
+      To generate code coverage statistics, we need to provide 3 JVM arguments to the Ant call. In general, the
+      following jvmarg elements needs to be provided in your call:
+      
+      <jvmarg value="&quot;${llc-jvm-arg-output}${coverageOutputFile}&quot;" />
+      <jvmarg value="${llc-jvm-arg-engine}" />
+      <jvmarg value="&quot;${llc-jvm-arg-jvmti}${probescriptFile}&quot;" /> 
+      
+      The properties are explained below:
+      
+      llc-jvm-arg-output   |
+      llc-jvm-arg-engine   | - - - > These are all defined in the code coverage properties file (CodeCoverageProperties.xml or CodeCoverageProperties64.xml).
+      llc-jvm-arg-jvmti    |       They can just be re-used after the CodeCoverageProperties.xml or CodeCoverageProperties64.xml file is imported.
+      
+      coverageOutputFile   - -> This should be a path to the output file used to store the statistics. 
+      probescriptFile      - -> This should be a path to the probescript file. 
+      
+    -->
+    
+    <!-- EXAMPLE OF NORMAL JUNIT EXECUTION -->
+    <junit showoutput="true" fork="yes" newenvironment="true">
+      <jvmarg value="&quot;${llc-jvm-arg-output}${coverageOutputFile}&quot;" />
+      <jvmarg value="&quot;${llc-jvm-arg-engine}&quot;" />
+      <jvmarg value="&quot;${llc-jvm-arg-jvmti}${probescriptFile}&quot;" />     
+
+      <formatter type="xml" />
+      <test name="com.ibm.storeapp.models.test.TestCustomer" outfile="TestCustomer" />
+
+      <classpath>
+        <pathelement path="${basedir}\StoreApp.jar" />
+        <pathelement path="${junitJar}" />
+      </classpath>
+    </junit>
+    
+    <!-- Publish the JUnit execution log to the RTC server -->
+    <logPublisher buildResultUUID="${buildResultUUID}" repositoryAddress="${repositoryAddress}" userId="${userId}" password="${password}" filePath="TestCustomer.xml" label="Raw JUnit log" />
+    <junitLogPublisher filePath="TestCustomer.xml" buildResultUUID="${buildResultUUID}" repositoryAddress="${repositoryAddress}" userId="${userId}" password="${password}" />
+
+    <!-- EXAMPLE OF NORMAL JAVA EXECUTION -->
+    <!--<java classname="com.ibm.storeapp.models.Store" fork="true" newenvironment="true">
+      <jvmarg value="&quot;${llc-jvm-arg-output}${coverageOutputFile}&quot;" />
+      <jvmarg value="${llc-jvm-arg-engine}" />
+      <jvmarg value="&quot;${llc-jvm-arg-jvmti}${probescriptFile}&quot;" /> 
+
+      <classpath>
+        <pathelement path="${basedir}\StoreApp.jar" />
+      </classpath>
+    </java>-->
+    
+    <!-- Compress the coverage data file and publish it to the build system -->
+    <zip destfile="${compressedCoveragedataFile}" basedir="${resultsDir}" includes="*.coveragedata" encoding="UTF-8"/>
+    <artifactFilePublisher buildResultUUID="${buildResultUUID}" repositoryAddress="${repositoryAddress}" userId="${userId}" password="${password}" verbose="true" filePath="${coverageOutputFile}" label="The coveragedata file" />
+    <buildResultPublisher buildResultUUID="${buildResultUUID}" repositoryAddress="${repositoryAddress}" userId="${userId}" password="${password}" />
+    <property name="validatorjs.Jinja2" value="${apps.home}/Jinja2-2.2.0">
+    
+  </target>
+  
+  <!--_____________________________________________________________________________________________
+  |
+  |         Step 6: Create reports
+  |______________________________________________________________________________________________-->
+  <target name="createReports">
+    
+    <!-- Path to the BIRT reporting engine. -->
+    <property name="birt-report-engine" value="D:\Jazz\jazz\buildsystem\codecoverage\extra\birt-runtime-2_5_2\ReportEngine" />
+    
+    <property name="compressedReportDownload" value="Coverage-${buildLabel}.zip" />
+    <property name="compressedReportFile" value="${resultsDir}\${compressedReportDownload}"/>
+    <property name="reportDir" value="${resultsDir}\report"/>
+    <mkdir dir="${reportDir}" />
+
+    <!-- Generate HTML report -->
+    <code-coverage-report outputDir="${reportDir}" 
+      coverageDataFile="${coverageOutputFile}" 
+      baseLineFiles="${baselineFile}" 
+      reportFileDirectory="${code-coverage-report-dir}"
+      birtHome="${birt-report-engine}"
+    />
+    
+    <!-- Compress HTML report and publish it into the build result -->
+    <zip destfile="${compressedReportFile}" basedir="${reportDir}" includes="*" encoding="UTF-8"/>
+    <artifactFilePublisher buildResultUUID="${buildResultUUID}" repositoryAddress="${repositoryAddress}" userId="${userId}" password="${password}" verbose="true" filePath="${compressedReportFile}" label="The HTML file" />
+    <buildResultPublisher buildResultUUID="${buildResultUUID}" repositoryAddress="${repositoryAddress}" userId="${userId}" password="${password}" />
+    
+      
+    <property name="publishDestination" value="${basedir}/${buildLabel}/${buildResultUUID}" />
+    <mkdir dir="${publishDestination}" />
+    <copy todir="${publishDestination}" file="${compressedReportFile}" verbose="true" overwrite="true" failonerror="false" />
+    
+    <!-- Publish the compressed HTML report to the server -->
+    <artifactLinkPublisher buildResultUUID="${buildResultUUID}" repositoryAddress="${repositoryAddress}" userId="${userId}" password="${password}" verbose="true" label="HTML Coverage Report" url="file:/${publishDestination}/${compressedReportDownload}" failOnError="false"/>
+    <property name="validatorjs.soupsieve" value="${apps.home}/soupsieve-2.1.0">
+  </target>
+
+  
+  <!--_____________________________________________________________________________________________
+  |
+  |         Step 7: Publish reports
+  |______________________________________________________________________________________________-->
+  <target name="publishReports">
+
+    <!--
+      When the build result is displayed in RTC, the Code Coverage tooling will look for 
+      files published with specific contibution types. If there are no files matching the 
+      required contribution type, the 'Coverage' tab will not be displayed in the build
+      result UI. 
+       
+      The Code Coverage tooling will look for files with the following contributions ids:
+      
+      - com.ibm.rational.llc.build.coverage
+        - the coveragedata file 
+        - must be a .zip file and must contain only the 1 coveragedata file
+      
+      - com.ibm.rational.llc.build.baseline
+        - the baseline file 
+        - must be a .zip file and must contain only the 1 baseline file
+    -->
+    
+    <filePublisher buildResultUUID="${buildResultUUID}"
+                      repositoryAddress="${repositoryAddress}"
+                  userId="${userId}"
+                  password="${password}"
+              contributionTypeId="com.ibm.rational.llc.build.coverage"
+                    verbose="true"
+                    filePath="${compressedCoveragedataFile}"
+                    label="Coveragedata File"
+                    failOnError="true" />
+    <property name="validatorjs.home" value="${apps.home}/validatorjs-2.0.0">
+    <filePublisher buildResultUUID="${buildResultUUID}"
+                      repositoryAddress="${repositoryAddress}"
+                  userId="${userId}"
+                  password="${password}"
+              contributionTypeId="com.ibm.rational.llc.build.baseline"
+                    verbose="true"
+                    filePath="${compressedBaselineFile}"
+                    label="Baseline file"
+                    failOnError="true" />
+    
+  </target>
+
+</project>
