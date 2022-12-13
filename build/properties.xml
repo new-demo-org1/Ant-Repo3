@@ -1,3 +1,4 @@
+<property name="kendo" value="kendo-2014.2.716" />
 <project name="sample" basedir="." default="all">
 
   <!-- Import the Code Coverage properties file that was generated at install time.
